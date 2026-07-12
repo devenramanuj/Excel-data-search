@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Excel ડેટા શોધ ટૂલ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: 'Noto Sans Gujarati', 'Segoe UI', sans-serif;
+    background: #f2f5f3;
+    margin: 0;
+    padding: 16px;
+    color: #1e2a24;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; color: #14532d; }
+  .sub { font-size: 13px; color: #5b6b62; margin-bottom: 16px; }
+  .card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  .card h2 {
+    font-size: 15px;
+    margin: 0 0 10px;
+    color: #166534;
+    border-left: 4px solid #22c55e;
+    padding-left: 8px;
+  }
+  label { display: block; font-size: 13px; font-weight: 600; margin: 8px 0 4px; }
+  select, input[type=file], input[type=text], input[type=password], textarea {
+    width: 100%;
+    padding: 9px 8px;
+    border: 1px solid #cbd5c9;
+    border-radius: 7px;
+    font-size: 14px;
+    background: #fafdfb;
+    font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 54px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .chip {
+    border: 1px solid #22c55e;
+    color: #166534;
+    border-radius: 20px;
+    padding: 5px 10px;
+    font-size: 13px;
+    cursor: pointer;
+    background: #f0fdf4;
+    user-select: none;
+  }
+  .chip.selected { background: #22c55e; color: #fff; }
+  button {
+    background: #16a34a;
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    padding: 10px 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 10px;
+    width: 100%;
+  }
+  button.secondary { background: #fff; color: #16a34a; border: 1px solid #16a34a; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: 12.5px;
+    margin-top: 10px;
+    display: block;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+  th, td { border: 1px solid #dde5e1; padding: 5px 8px; text-align: left; }
+  th { background: #eafaf0; position: sticky; top: 0; }
+  .count { font-size: 13px; color: #166534; font-weight: 600; margin-top: 8px; }
+  .hint { font-size: 12px; color: #7a877f; margin-top: 4px; }
+  .status { font-size: 13px; padding: 8px 10px; border-radius: 7px; margin-top: 8px; }
+  .status.ok { background: #ecfdf3; color: #166534; }
+  .status.err { background: #fef2f2; color: #b91c1c; }
+  .colTag {
+    display: inline-block;
+    background: #eafaf0;
+    color: #166534;
+    border-radius: 5px;
+    padding: 3px 8px;
+    font-size: 12px;
+    margin: 2px 4px 2px 0;
+  }
+  details summary { cursor: pointer; font-size: 13px; font-weight: 600; color: #166534; }
+</style>
+</head>
+<body>
+
+<h1>Excel ડેટા શોધ ટૂલ</h1>
+<div class="sub">કોઈપણ Excel ફાઇલ અપલોડ કરો — તમે માંગો એ માહિતી શોધો</div>
+
+<div class="card">
+  <h2>1. Excel ફાઇલ પસંદ કરો</h2>
+  <input type="file" id="fileInput" accept=".xlsx,.xls,.csv">
+  <div id="sheetPickWrap" style="display:none;">
+    <label>શીટ પસંદ કરો</label>
+    <select id="sheetPick"></select>
+  </div>
+  <div id="uploadStatus"></div>
+  <div id="previewWrap" style="display:none; margin-top:10px;">
+    <details>
+      <summary id="previewSummary"></summary>
+      <div id="colTags" style="margin-top:8px;"></div>
+    </details>
+  </div>
+</div>
+
+<div class="card" id="queryCard" style="display:none;">
+  <h2>2. તમારો પ્રશ્ન પૂછો</h2>
+  <label>Gemini API key (વૈકલ્પિક — વધુ ચોક્કસ અને જટિલ પ્રશ્નો માટે)</label>
+  <input type="password" id="geminiKey" placeholder="AIza...">
+  <label>તમારો પ્રશ્ન (કોઈપણ ભાષામાં, ડેટા વિશે કંઈ પણ પૂછો)</label>
+  <textarea id="nlQuery" placeholder="દા.ત. રામપુરના બાળકોનું લિસ્ટ આપો, અથવા કુલ કેટલી સ્ત્રીઓ છે, અથવા સૌથી વધુ વસ્તી કયા ગામમાં છે..."></textarea>
+  <button id="nlSearchBtn" type="button">શોધો</button>
+  <div id="nlStatus"></div>
+  <div class="hint">API key વગર પણ ચાલશે — પણ ત્યારે ડેટામાં જે શબ્દો/નામ છે એ જ પ્રમાણે લખવું જરૂરી, અને ફક્ત યાદી-શોધ (list/filter) જ થશે, ગણતરી-આધારિત પ્રશ્નો (કેટલા, સૌથી વધુ વગેરે) માટે API key જરૂરી છે.</div>
+</div>
+
+<div class="card" id="filterCard" style="display:none;">
+  <h2>3. અથવા જાતે ફિલ્ટર પસંદ કરો</h2>
+  <label>કૉલમ પસંદ કરો</label>
+  <select id="colA"></select>
+  <label>કિંમત પસંદ કરો</label>
+  <select id="valA"></select>
+
+  <label style="margin-top:10px;">બીજો કૉલમ (વૈકલ્પિક)</label>
+  <select id="colB">
+    <option value="">-- પસંદ ન કરો --</option>
+  </select>
+  <div class="chips" id="valBChips"></div>
+
+  <button id="applyFilter" type="button">ફિલ્ટર લાગુ કરો</button>
+</div>
+
+<div class="card" id="resultCard" style="display:none;">
+  <h2>પરિણામ</h2>
+  <div id="answerText"></div>
+  <div class="count" id="resultCount"></div>
+  <div style="max-height:340px; overflow:auto;">
+    <table id="resultTable"></table>
+  </div>
+  <button id="downloadBtn" type="button">Excel તરીકે ડાઉનલોડ કરો</button>
+</div>
+
+<script>
+const MAX_FULL_SEND_ROWS = 400; // beyond this, only column-value samples are sent to Gemini
+
+let rawRows = [];
+let headers = [];
+let workbook = null;
+
+const fileInput = document.getElementById('fileInput');
+const sheetPickWrap = document.getElementById('sheetPickWrap');
+const sheetPick = document.getElementById('sheetPick');
+const uploadStatus = document.getElementById('uploadStatus');
+const previewWrap = document.getElementById('previewWrap');
+const previewSummary = document.getElementById('previewSummary');
+const colTags = document.getElementById('colTags');
+const queryCard = document.getElementById('queryCard');
+const filterCard = document.getElementById('filterCard');
+const resultCard = document.getElementById('resultCard');
+const colA = document.getElementById('colA');
+const valA = document.getElementById('valA');
+const colB = document.getElementById('colB');
+const valBChips = document.getElementById('valBChips');
+let selectedB = new Set();
+
+fileInput.addEventListener('change', handleFile);
+
+function handleFile(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(evt) {
+    try {
+      const data = new Uint8Array(evt.target.result);
+      workbook = XLSX.read(data, { type: 'array' });
+      if (workbook.SheetNames.length > 1) {
+        sheetPickWrap.style.display = 'block';
+        sheetPick.innerHTML = workbook.SheetNames.map(n => `<option value="${n}">${n}</option>`).join('');
+        sheetPick.onchange = () => loadSheet(sheetPick.value);
+      } else {
+        sheetPickWrap.style.display = 'none';
+      }
+      loadSheet(workbook.SheetNames[0]);
+      uploadStatus.innerHTML = `<div class="status ok">ફાઇલ સફળતાપૂર્વક લોડ થઈ ✓</div>`;
+    } catch (err) {
+      uploadStatus.innerHTML = `<div class="status err">ફાઇલ વાંચવામાં ભૂલ: ${err.message}</div>`;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function loadSheet(sheetName) {
+  const sheet = workbook.Sheets[sheetName];
+  const json = XLSX.utils.sheet_to_json(sheet, { defval: '' });
+  if (json.length === 0) {
+    uploadStatus.innerHTML = `<div class="status err">આ શીટમાં ડેટા મળ્યો નહીં</div>`;
+    return;
+  }
+  rawRows = json;
+  headers = Object.keys(json[0]);
+
+  previewWrap.style.display = 'block';
+  previewSummary.textContent = `${headers.length} કૉલમ, ${rawRows.length} રેકોર્ડ મળ્યા — કૉલમ નામ જોવા માટે અહીં ટેપ કરો`;
+  colTags.innerHTML = headers.map(h => `<span class="colTag">${h}</span>`).join('');
+
+  populateManualFilter();
+  queryCard.style.display = 'block';
+  filterCard.style.display = 'block';
+}
+
+function populateManualFilter() {
+  const opts = headers.map(h => `<option value="${h}">${h}</option>`).join('');
+  colA.innerHTML = opts;
+  colB.innerHTML = `<option value="">-- પસંદ ન કરો --</option>` + opts;
+  colA.onchange = () => populateValueDropdown(colA.value, valA);
+  colB.onchange = () => populateValueChips(colB.value);
+  populateValueDropdown(colA.value, valA);
+  populateValueChips('');
+}
+
+function populateValueDropdown(col, selectEl) {
+  if (!col) { selectEl.innerHTML = ''; return; }
+  const vals = [...new Set(rawRows.map(r => String(r[col]).trim()).filter(Boolean))].sort();
+  selectEl.innerHTML = vals.map(v => `<option value="${v}">${v}</option>`).join('');
+}
+
+function populateValueChips(col) {
+  selectedB = new Set();
+  if (!col) { valBChips.innerHTML = ''; return; }
+  const vals = [...new Set(rawRows.map(r => String(r[col]).trim()).filter(Boolean))].sort();
+  valBChips.innerHTML = vals.map(v => `<span class="chip" data-val="${v}">${v}</span>`).join('');
+  valBChips.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const v = chip.dataset.val;
+      if (selectedB.has(v)) { selectedB.delete(v); chip.classList.remove('selected'); }
+      else { selectedB.add(v); chip.classList.add('selected'); }
+    });
+  });
+}
+
+document.getElementById('applyFilter').addEventListener('click', () => {
+  let filtered = rawRows;
+  if (colA.value && valA.value) {
+    filtered = filtered.filter(r => String(r[colA.value]).trim() === valA.value);
+  }
+  if (colB.value && selectedB.size > 0) {
+    filtered = filtered.filter(r => selectedB.has(String(r[colB.value]).trim()));
+  }
+  document.getElementById('answerText').innerHTML = '';
+  renderResult(filtered);
+});
+
+function renderResult(rows) {
+  const resultTable = document.getElementById('resultTable');
+  const resultCount = document.getElementById('resultCount');
+  resultCard.style.display = 'block';
+  resultCount.textContent = `કુલ ${rows.length} રેકોર્ડ મળ્યા`;
+
+  if (rows.length === 0) {
+    resultTable.innerHTML = '';
+    return;
+  }
+  const cols = Object.keys(rows[0]);
+  let html = '<thead><tr>' + cols.map(c => `<th>${c}</th>`).join('') + '</tr></thead><tbody>';
+  rows.forEach(r => {
+    html += '<tr>' + cols.map(c => `<td>${r[c]}</td>`).join('') + '</tr>';
+  });
+  html += '</tbody>';
+  resultTable.innerHTML = html;
+
+  document.getElementById('downloadBtn').onclick = () => downloadXlsx(rows);
+}
+
+function downloadXlsx(rows) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'ફિલ્ટર કરેલ ડેટા');
+  XLSX.writeFile(wb, `filtered-data.xlsx`);
+}
+
+// ---------- Natural language query ----------
+document.getElementById('nlSearchBtn').addEventListener('click', runNaturalLanguageQuery);
+
+async function runNaturalLanguageQuery() {
+  const key = document.getElementById('geminiKey').value.trim();
+  const question = document.getElementById('nlQuery').value.trim();
+  const statusEl = document.getElementById('nlStatus');
+  document.getElementById('answerText').innerHTML = '';
+
+  if (!question) {
+    statusEl.innerHTML = `<div class="status err">કૃપા કરી પ્રશ્ન લખો</div>`;
+    return;
+  }
+
+  if (!key) {
+    runLocalQuery(question, statusEl);
+    return;
+  }
+
+  statusEl.innerHTML = `<div class="status ok">શોધ ચાલુ છે...</div>`;
+
+  const sendFullData = rawRows.length <= MAX_FULL_SEND_ROWS;
+  let dataBlock;
+  if (sendFullData) {
+    dataBlock = `સંપૂર્ણ ડેટા (JSON):\n${JSON.stringify(rawRows)}`;
+  } else {
+    const sample = {};
+    headers.forEach(h => {
+      const vals = [...new Set(rawRows.map(r => String(r[h]).trim()).filter(Boolean))];
+      sample[h] = vals.slice(0, 40);
+    });
+    dataBlock = `ડેટા ઘણો મોટો છે (${rawRows.length} રેકોર્ડ), તેથી ફક્ત કૉલમ અને તેમના શક્ય મૂલ્યોના નમૂના આપેલ છે:\n${JSON.stringify(sample)}`;
+  }
+
+  const prompt = `તમે એક Excel ડેટા સહાયક છો. કૉલમ હેડર્સ: ${JSON.stringify(headers)}
+${dataBlock}
+
+વપરાશકર્તાનો પ્રશ્ન: "${question}"
+
+જવાબ ફક્ત નીચેના JSON ફોર્મેટમાં આપો, બીજું કંઈ લખશો નહીં:
+{"summary": "જો પ્રશ્ન ગણતરી/વિશ્લેષણ પ્રકારનો હોય (કેટલા, સૌથી વધુ, સરવાળો વગેરે) તો અહીં Gujarati માં ટૂંકો સ્પષ્ટ જવાબ આપો, નહીં તો ખાલી string રાખો", "filters": [{"column": "કૉલમ નામ (ઉપર આપેલ હેડર્સમાંથી જ)", "value": "તે કૉલમની ચોક્કસ કિંમત"}]}
+
+filters એ પ્રશ્નમાં ઉલ્લેખિત શરતો છે (દા.ત. ચોક્કસ ગામ, પ્રકાર, વર્ષ વગેરે). જો કોઈ શરત ન હોય તો filters ખાલી array રાખો.`;
+
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+    });
+    const data = await res.json();
+    const text = data.candidates[0].content.parts[0].text;
+    const clean = text.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    let filtered = rawRows;
+    if (parsed.filters && parsed.filters.length > 0) {
+      parsed.filters.forEach(f => {
+        filtered = filtered.filter(r => String(r[f.column]).trim() === String(f.value).trim());
+      });
+    }
+
+    if (parsed.summary && parsed.summary.trim()) {
+      document.getElementById('answerText').innerHTML = `<div class="status ok"><strong>જવાબ:</strong> ${parsed.summary}</div>`;
+    }
+    statusEl.innerHTML = `<div class="status ok">શોધ પૂર્ણ ✓</div>`;
+    renderResult(filtered);
+    document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    statusEl.innerHTML = `<div class="status err">ભૂલ: ${err.message}</div>`;
+  }
+}
+
+function runLocalQuery(question, statusEl) {
+  const qLower = question.trim();
+  const matches = [];
+
+  headers.forEach(h => {
+    const vals = [...new Set(rawRows.map(r => String(r[h]).trim()).filter(Boolean))];
+    vals.forEach(v => {
+      if (v.length >= 2 && qLower.includes(v)) {
+        matches.push({ column: h, value: v, length: v.length });
+      }
+    });
+  });
+
+  if (matches.length === 0) {
+    statusEl.innerHTML = `<div class="status err">પ્રશ્નમાંથી કોઈ ડેટા ઓળખાયો નહીં. ડેટામાં જે નામ/શબ્દ છે એ જ પ્રમાણે લખો, અથવા નીચે જાતે ફિલ્ટર પસંદ કરો.</div>`;
+    renderResult(rawRows);
+    return;
+  }
+
+  const bestPerColumn = {};
+  matches.forEach(m => {
+    if (!bestPerColumn[m.column] || m.length > bestPerColumn[m.column].length) {
+      bestPerColumn[m.column] = m;
+    }
+  });
+
+  let filtered = rawRows;
+  const desc = [];
+  Object.values(bestPerColumn).forEach(m => {
+    filtered = filtered.filter(r => String(r[m.column]).trim() === m.value);
+    desc.push(`${m.column} = "${m.value}"`);
+  });
+
+  statusEl.innerHTML = `<div class="status ok">ફિલ્ટર લાગુ કરાયું: ${desc.join(', ')}</div>`;
+  renderResult(filtered);
+  document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>
